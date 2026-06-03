@@ -8,8 +8,3 @@ admin.site.register(Product)
 admin.site.register(User)
 admin.site.register(Sale)
 admin.site.register(SaleItem)
-
-# https://github.com/baxromjon2364-svg/erp.git
-
-
-# git remote add origin https://github.com/baxromjon2364-svg/erp.git
