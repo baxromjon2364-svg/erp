@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'blog',
     'rest_framework',
+    'rest_framework_simplejwt',
 ]
 
 MIDDLEWARE = [
@@ -102,6 +103,14 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
+# settings.py
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
+
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
@@ -121,3 +130,4 @@ STATIC_URL = 'static/'
 STATIC_ROOT= BASE_DIR / 'staticfiles'
 MEDIA_ROOT= BASE_DIR/ 'media'
 MEDIA_URL='/media/'
+AUTH_USER_MODEL = 'blog.User'

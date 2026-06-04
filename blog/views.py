@@ -5,7 +5,11 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
 from rest_framework import status
 from .serializers import CategorySerializer, ProductSerializer, SaleItemSerializer, SaleSerializer, UserSerializer
-
+from django.db import transaction
+from rest_framework.exceptions import ValidationError
+from .permissions import IsCashierUserOnly,IsAdminUserOnly
+from rest_framework.permissions import IsAuthenticated
+from django.db.models import Sum,F
 
 
 class CategoryViewSet(ModelViewSet):
@@ -13,9 +17,16 @@ class CategoryViewSet(ModelViewSet):
     serializer_class = CategorySerializer
 
 
+
+
 class ProductViewSet(ModelViewSet):
-    queryset = Product.objects.all()
     serializer_class = ProductSerializer
+    def get_queryset(self):
+        return Product.objects.filter(stock_quantity__gt=0)
+
+
+
+
 
 class SaleItemViewSet(ModelViewSet):
     queryset = SaleItem.objects.all()
@@ -30,91 +41,74 @@ class UserViewSet(ModelViewSet):
     serializer_class = UserSerializer
 
 
-
-
 class DashboardAPIView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUserOnly]
+
     def get(self, request):
-        cache_key = "dashboard_statistika"
-        statistika = cache.get(cache_key)
-        if not statistika:
-            jami_savdo = Sale.objects.aggregate(Sum('total_amount'))['total_amount__sum'] or 0
-            jami_foyda = 0
-            sale_items = SaleItem.objects.select_related('product').all()
-            for item in sale_items:
-                foyda = (item.price_at_sale - item.product.purchase_price) * item.quantity
-                jami_foyda += foyda
-            statistika = {
-                "jami_savdo": float(jami_savdo),
-                "jami_foyda": float(jami_foyda)
-            }
-            cache.set(cache_key, statistika, timeout=3600)
-        return Response(statistika)
+        foyda_statikasi = SaleItem.objects.select_related('product').aggregate(
+            umumiy_foyda=Sum(
+                (F('price_at_sale') - F('product__purchase_price')) * F('quantity')
+            ),
+            umumiy_savdo_hajmi=Sum(
+                F('price_at_sale') * F('quantity')
+            )
+        )
 
-# {
-#     "cashier_id": 1,
-#     "total_amount": 125000.00,
-#     "payment_type": "cash",
-#     "items": [
-#         {
-#             "product_id": 6,
-#             "quantity": 2,
-#             "price_at_sale": 30000
-#         },
-#         {
-#             "product_id": 7,
-#             "quantity": 1,
-#             "price_at_sale": 15000
-#         }
-#     ]
-# }
+        return Response({
+            "jami_foyda": foyda_statikasi['umumiy_foyda'] or 0,
+            "jami_savdo": foyda_statikasi['umumiy_savdo_hajmi'] or 0
+        })
 
-
-
-
-from django.db import transaction
-from django.db.models import Sum
-from django.core.cache import cache
 
 
 
 class CheckoutAPIView2(APIView):
+    permission_classes = [IsAuthenticated, IsCashierUserOnly]
+
     def post(self, request):
         tovarlar = request.data.get("items")
-        jami_summa = request.data.get("total_amount")
         tulov_turi = request.data.get("payment_type", "CASH")
-        kassir_id = request.data.get("cashier_id")
+        kassir=request.user
 
-        if not kassir_id:
-            return Response(
-                {"error": "kassir ID  yuborilmadi :( "},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        with transaction.atomic():
-            yangi_savdo = Sale.objects.create(
-                cashier_id=kassir_id,
-                total_amount=jami_summa,
-                payment_type=tulov_turi
-            )
-
-            for tovar in tovarlar:
-                mahsulot_id = tovar['product_id']
-                sotilgan_soni = tovar['quantity']
-                sotilish_narxi = tovar['price_at_sale']
-
-                ombordagi_mahsulot = Product.objects.get(product_id=mahsulot_id)
-
-                if ombordagi_mahsulot.stock_quantity < sotilgan_soni:
-                    raise ValueError (f"{ombordagi_mahsulot.name} omborda yetarli emas ")
-
-                ombordagi_mahsulot.stock_quantity -= sotilgan_soni
-                ombordagi_mahsulot.save()
-
-                SaleItem.objects.create(
-                    sale_id=yangi_savdo,
-                    product=ombordagi_mahsulot,
-                    quantity=sotilgan_soni,
-                    price_at_sale=sotilish_narxi
+        try:
+            with transaction.atomic():
+                yangi_savdo = Sale.objects.create(
+                    cashier=kassir,
+                    total_amount=0,
+                    payment_type=tulov_turi
                 )
+                jami_summa = 0
 
-        return Response({"message": "sotuv muvaffaqiyatli yakunlandi"}, status=status.HTTP_201_CREATED)
+                for tovar in tovarlar:
+                    mahsulot_id = tovar['product_id']
+                    sotilgan_soni = tovar['quantity']
+
+                    if sotilgan_soni <= 0:
+                        raise ValidationError(f"Xato miqdor kiritdingiz! Miqdor 0 dan katta bo'lishi shart.")
+
+                    try:
+                        ombordagi_mahsulot = Product.objects.get(product_id=mahsulot_id)
+                    except Product.DoesNotExist:
+                        raise ValidationError(f"ID={mahsulot_id} bo'lgan mahsulot bazada topilmadi.")
+                    sotilish_narxi = ombordagi_mahsulot.selling_price
+
+                    if ombordagi_mahsulot.stock_quantity < sotilgan_soni:
+                        raise ValidationError(f"{ombordagi_mahsulot.name} omborda yetarli emas qolgani : {ombordagi_mahsulot.stock_quantity}")
+
+                    ombordagi_mahsulot.stock_quantity -= sotilgan_soni
+                    ombordagi_mahsulot.save()
+                    jami_summa += sotilish_narxi * sotilgan_soni
+
+                    SaleItem.objects.create(
+                        sale_id=yangi_savdo,
+                        product=ombordagi_mahsulot,
+                        quantity=sotilgan_soni,
+                        price_at_sale=sotilish_narxi
+                    )
+
+                yangi_savdo.total_amount = jami_summa
+                yangi_savdo.save()
+
+            return Response({"message": "Sotuv muvaffaqiyatli yakunlandi"}, status=status.HTTP_201_CREATED)
+        except ValidationError as e:
+            return Response("savdo tugallanmadi")

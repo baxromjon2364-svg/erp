@@ -1,0 +1,1 @@
+web: gunicorn Mini_ERP.wsgi:application
