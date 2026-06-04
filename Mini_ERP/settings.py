@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-bc@8q+yp9a7!kr#&z9)(%#9ll0)1(4j)7ts=vvjq@(@-k4*71#
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = ['mini-erp-backend-iblq.onrender.com', '127.0.0.1', 'localhost']
 
 
 # Application definition
