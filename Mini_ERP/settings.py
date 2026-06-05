@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'blog',
     'rest_framework',
     'rest_framework_simplejwt',
+    'drf_yasg',
 ]
 
 MIDDLEWARE = [
@@ -110,7 +111,6 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
 }
-
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
