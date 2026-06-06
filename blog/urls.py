@@ -1,5 +1,6 @@
 from django.urls import path,include
 from rest_framework.routers import DefaultRouter
+from django.views.generic import TemplateView
 from .views import UserViewSet,CategoryViewSet,ProductViewSet,SaleViewSet,SaleItemViewSet,DashboardAPIView,CheckoutAPIView2
 
 router=DefaultRouter()
@@ -13,7 +14,8 @@ router.register('sale_item',SaleItemViewSet, basename='sale_item')
 
 
 urlpatterns=[
+    path('', TemplateView.as_view(template_name='index.html'), name='home'),
     path('check',CheckoutAPIView2.as_view(),name='check'),
     path('dash/',DashboardAPIView.as_view(),name='dash'),
-    path('',include(router.urls)),
+    path('router',include(router.urls)),
 ]
